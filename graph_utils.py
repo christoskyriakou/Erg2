@@ -1,100 +1,70 @@
 import numpy as np
 import kahip
 from distances import L2_distance_batch
+from IVFFLAT import IVFFLAT
 
+def build_knn_graph_with_ivfflat(X, k, nlist=100, nprobe=5):
+    n, d = X.shape
+    
+    # 1. φτιάξε το index
+    index = IVFFLAT(d, nlist)
+    index.train(X)
+    index.add(X)
 
-# --------------------------------------------------------
-# 1) Directed kNN graph
-# --------------------------------------------------------
-def build_knn_graph(X, k=10):
-    n = X.shape[0]
+    # 2. κενός γράφος
     graph = [[] for _ in range(n)]
 
+    # 3. για κάθε vector X[i], τρέξε ANN search
     for i in range(n):
-        dists = L2_distance_batch(X, X[i])
-        idx = np.argpartition(dists, k+1)[:k+1]
-        idx = idx[idx != i]
-        graph[i] = idx[:k].tolist()
-
+        results = index.search(X[i], k, nprobe)
+        
+        # κράτα μόνο τα indices
+        neighbors = [idx for dist, idx in results]
+        graph[i] = neighbors
+        
         if i % 100 == 0:
-            print(f"[KNN] Processed {i}/{n}")
+            print(f"[KNN-IVFFLAT] processed {i}/{n}")
 
     return graph
 
-
-# --------------------------------------------------------
-# 2) Undirected weighted graph
-# --------------------------------------------------------
 def make_undirected_weighted(graph):
-    n = len(graph)
-    undirected = [{} for _ in range(n)]
-
+    n=len(graph)
+    undir=[{}for _ in range(n)]
     for i in range(n):
         for j in graph[i]:
-            w = 2 if i in graph[j] else 1
-            undirected[i][j] = w
-            undirected[j][i] = w
+            w=2 if i in graph[j] else 1
+            undir[i][j]=w
+            undir[j][i]=w
+    return undir
 
-    return undirected
-
-
-# --------------------------------------------------------
-# 3) Convert to CSR format
-# --------------------------------------------------------
-def graph_to_csr(ugraph):
-    """Convert undirected weighted graph to CSR format"""
-    n = len(ugraph)
-    xadj = [0]
-    adjncy = []
-    adjcwgt = []
-
+def graph_to_csr(undir):
+    n=len(undir)
+    xadj=[0]
+    adjncy=[]
+    adjcwgt=[]
     for i in range(n):
-        for j, w in ugraph[i].items():
+        for j, w in undir[i].items():
             adjncy.append(j)
             adjcwgt.append(w)
         xadj.append(len(adjncy))
-
     return xadj, adjncy, adjcwgt
 
-
-# --------------------------------------------------------
-# 4) Run KaHIP partitioning
-# --------------------------------------------------------
 def run_kahip(ugraph, m, imbalance, mode):
-    xadj, adjncy, adjcwgt = graph_to_csr(ugraph)
-    n = len(ugraph)
-
+    xadj,adjncy,adjcwgt=graph_to_csr(ugraph)
+    n=len(ugraph)
     print(f"[KaHIP] Graph: {n} vertices, {len(adjncy)} edges")
     print(f"[KaHIP] Partitioning into {m} parts (imbalance={imbalance})...")
-    
-    # KaHIP expects: vwgt, xadj, adjcwgt, adjncy, nparts, imbalance, suppress, seed, mode
-    # Based on pybind11 signature with 9 arguments
-    vwgt = [1] * n  # vertex weights
-    
-    # Try multiple argument combinations
-    try:
-        # Attempt 1: Standard order with edge weights
-        result = kahip.kaffpa(
-            vwgt,
-            xadj,
-            adjcwgt,
-            adjncy,
-            m,
-            float(imbalance),
-            True,
-            0,
-            int(mode)
-        )
-        print(f"[KaHIP] Partitioning finished! Result type: {type(result)}")
-        
-        # KaHIP returns (edgecut, partition_array)
-        if isinstance(result, tuple):
-            edgecut, parts = result
-            print(f"[KaHIP] Edge cut: {edgecut}")
-            return np.array(parts, dtype=np.int32)
-        else:
-            return np.array(result, dtype=np.int32)
-    except Exception as e:
-        print(f"[ERROR] Attempt 1 failed: {e}")
-        # If it worked but failed on conversion, the other attempts won't help
-        raise RuntimeError(f"KaHIP succeeded but result format unexpected: {e}")
+    vwgt=[1]*n
+    edgecut,parts=kahip.kaffpa(
+        vwgt,
+        xadj,
+        adjcwgt,
+        adjncy,
+        int(m),
+        float(imbalance),
+        True,       # suppress KaHIP internal printing
+        0,          # seed
+        int(mode)   # mode: KaFFPa, Eco, Fast, Strong, etc.
+    )
+    print(f"[KaHIP] Edgecut: {edgecut}")
+    return np.array(parts, dtype=np.int32)

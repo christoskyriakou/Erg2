@@ -65,37 +65,65 @@ def convert_mnist_to_bvecs(idx_path, out_path):
 # -------------------------------------------------------
 # UNIFIED LOADER
 # -------------------------------------------------------
-def load_dataset(base_path):
+def load_dataset(path):
     """
-    Loads dataset:
-      - base.fvecs
-      - base.bvecs
-      - base.idx3-ubyte  (auto-convert to .bvecs!)
+    Smart loader: accepts both base names and full filenames.
+    Supports:
+      - *.fvecs
+      - *.bvecs
+      - *.ivecs
+      - *.idx3-ubyte (auto converts to bvecs)
     """
-    fpath = base_path + ".fvecs"
-    bpath = base_path + ".bvecs"
-    idx_path = base_path + ".idx3-ubyte"
+    # If user passed exact file
+    if os.path.isfile(path):
 
-    # SIFT (.fvecs)
+        # ---- FVECs ----
+        if path.endswith(".fvecs"):
+            print("[INFO] Loading SIFT (.fvecs)")
+            return read_fvecs(path), "sift"
+
+        # ---- BVECs ----
+        if path.endswith(".bvecs"):
+            print("[INFO] Loading MNIST (.bvecs)")
+            return read_bvecs(path), "mnist"
+
+        # ---- IVECs ----
+        if path.endswith(".ivecs"):
+            print("[INFO] Loading GT (.ivecs)")
+            return read_ivecs(path), "gt"
+
+        # ---- IDX (MNIST) ----
+        if path.endswith(".idx3-ubyte"):
+            print("[INFO] Converting MNIST idx → .bvecs")
+            out_bvecs = path.replace(".idx3-ubyte", ".bvecs")
+            convert_mnist_to_bvecs(path, out_bvecs)
+            return read_bvecs(out_bvecs), "mnist"
+
+        raise ValueError(f"Unknown file type: {path}")
+
+    # If user passed base (no extension)
+    base = path
+    fpath = base + ".fvecs"
+    bpath = base + ".bvecs"
+    idx_path = base + ".idx3-ubyte"
+    ivec_path = base + ".ivecs"
+
     if os.path.exists(fpath):
         print("[INFO] Loading SIFT (.fvecs)")
         return read_fvecs(fpath), "sift"
 
-    # MNIST (.bvecs)
     if os.path.exists(bpath):
         print("[INFO] Loading MNIST (.bvecs)")
         return read_bvecs(bpath), "mnist"
 
-    # MNIST RAW IDX -> convert to bvecs
     if os.path.exists(idx_path):
-        out_bvecs = base_path + ".bvecs"
+        print("[INFO] Converting MNIST idx → .bvecs")
+        out_bvecs = base + ".bvecs"
         convert_mnist_to_bvecs(idx_path, out_bvecs)
         return read_bvecs(out_bvecs), "mnist"
 
-    # Ground Truth
-    ivec_path = base_path + ".ivecs"
     if os.path.exists(ivec_path):
-        print("[INFO] Loading ground truth (.ivecs)")
+        print("[INFO] Loading GT (.ivecs)")
         return read_ivecs(ivec_path), "gt"
 
-    raise ValueError("Unknown dataset type: " + base_path)
+    raise ValueError(f"Unknown dataset type: {path}")
