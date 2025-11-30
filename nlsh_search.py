@@ -1,180 +1,298 @@
-#!/usr/bin/env python3
-"""
-Neural LSH - Search
-Αναζήτηση πλησιέστερων γειτόνων με Neural LSH
-"""
-
 import argparse
-import sys
-import time
 import numpy as np
 import torch
-from pathlib import Path
+import time
+from models import MLP
+from dataset_parser import load_dataset
+from distances import L2_distance_batch
+import os
 
-from src.dataset_parser import DatasetParser
-from src.index_manager import IndexManager
-from src.search_engine import SearchEngine
-from src.metrics import MetricsCalculator
 
-
-def parse_arguments():
-    parser = argparse.ArgumentParser(description='Neural LSH - Search')
+# -------------------------------------------------------
+# LOAD INDEX
+# -------------------------------------------------------
+def load_index(index_path, d, m, layers, nodes):
+    """
+    Φορτώνει το εκπαιδευμένο μοντέλο και το inverted index
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Required arguments
-    parser.add_argument('-d', '--dataset', required=True, help='Input dataset file')
-    parser.add_argument('-q', '--query', required=True, help='Query file')
-    parser.add_argument('-i', '--index', required=True, help='Index path')
-    parser.add_argument('-o', '--output', required=True, help='Output file')
-    parser.add_argument('-type', '--type', required=True, choices=['sift', 'mnist'],
-                        help='Dataset type')
+    # Load model
+    model_path = os.path.join(index_path, "model.pth")
+    model = MLP(d_in=d, num_classes=m, layers=layers, hidden=nodes).to(device)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.eval()
+    print(f"[SEARCH] Loaded model from {model_path}")
     
-    # Optional arguments
-    parser.add_argument('-N', '--neighbors', type=int, default=1,
-                        help='Number of nearest neighbors (default: 1)')
-    parser.add_argument('-R', '--radius', type=float, default=None,
-                        help='Range search radius (default: 2000 for MNIST, 2800 for SIFT)')
-    parser.add_argument('-T', '--probes', type=int, default=5,
-                        help='Number of bins to probe (default: 5)')
-    parser.add_argument('-range', '--range_search', type=str, default='true',
-                        choices=['true', 'false'],
-                        help='Enable range search (default: true)')
+    # Load inverted index
+    inv_path = os.path.join(index_path, "inverted_index.npy")
+    inverted = np.load(inv_path, allow_pickle=True).item()
+    print(f"[SEARCH] Loaded inverted index from {inv_path}")
     
-    return parser.parse_args()
+    return model, inverted, device
 
 
+# -------------------------------------------------------
+# MULTI-PROBE SEARCH
+# -------------------------------------------------------
+def multi_probe_search(model, inverted, query, T, device):
+    """
+    Εκτελεί multi-probe search για ένα query
+    
+    Returns:
+        candidate_indices: λίστα με τα indices των υποψηφίων σημείων
+    """
+    q_tensor = torch.from_numpy(query).float().unsqueeze(0).to(device)
+    
+    with torch.no_grad():
+        logits = model(q_tensor)
+        probs = torch.softmax(logits, dim=1).squeeze().cpu().numpy()
+    
+    # Βρες τα T bins με τις μεγαλύτερες πιθανότητες
+    top_bins = np.argsort(probs)[-T:][::-1]
+    
+    # Συλλογή υποψηφίων από τα T bins
+    candidates = []
+    for bin_id in top_bins:
+        if bin_id in inverted:
+            candidates.extend(inverted[bin_id])
+    
+    return list(set(candidates))  # Remove duplicates
+
+
+# -------------------------------------------------------
+# KNN SEARCH
+# -------------------------------------------------------
+def knn_search(X, query, candidate_indices, N):
+    """
+    Εκτελεί ακριβή k-NN search στους υποψηφίους
+    
+    Returns:
+        neighbors: λίστα με (index, distance) για τους N πλησιέστερους
+    """
+    if len(candidate_indices) == 0:
+        return []
+    
+    # Υπολόγισε αποστάσεις μόνο για τους υποψηφίους
+    candidates_data = X[candidate_indices]
+    distances = L2_distance_batch(candidates_data, query)
+    
+    # Ταξινόμηση και επιλογή top-N
+    sorted_idx = np.argsort(distances)[:N]
+    
+    neighbors = [(candidate_indices[i], distances[i]) for i in sorted_idx]
+    return neighbors
+
+
+# -------------------------------------------------------
+# RANGE SEARCH
+# -------------------------------------------------------
+def range_search(X, query, candidate_indices, R):
+    """
+    Εκτελεί range search στους υποψηφίους
+    
+    Returns:
+        neighbors: λίστα με indices εντός ακτίνας R
+    """
+    if len(candidate_indices) == 0:
+        return []
+    
+    candidates_data = X[candidate_indices]
+    distances = L2_distance_batch(candidates_data, query)
+    
+    # Φιλτράρισμα με βάση την ακτίνα
+    within_range = [candidate_indices[i] for i in range(len(distances)) if distances[i] <= R]
+    return within_range
+
+
+# -------------------------------------------------------
+# TRUE KNN (BRUTE FORCE)
+# -------------------------------------------------------
+def true_knn_search(X, query, N):
+    """
+    Εξαντλητική αναζήτηση σε ολόκληρο το dataset
+    """
+    distances = L2_distance_batch(X, query)
+    sorted_idx = np.argsort(distances)[:N]
+    neighbors = [(i, distances[i]) for i in sorted_idx]
+    return neighbors
+
+
+# -------------------------------------------------------
+# COMPUTE METRICS
+# -------------------------------------------------------
+def compute_metrics(approx_neighbors, true_neighbors, range_neighbors, t_approx, t_true):
+    """
+    Υπολογίζει AF, Recall@N
+    """
+    # Average AF (Approximation Factor)
+    af_sum = 0.0
+    count = 0
+    
+    for (idx_a, dist_a), (idx_t, dist_t) in zip(approx_neighbors, true_neighbors):
+        if dist_t > 0:
+            af_sum += dist_a / dist_t
+            count += 1
+    
+    avg_af = af_sum / count if count > 0 else 1.0
+    
+    # Recall@N
+    approx_set = set([idx for idx, _ in approx_neighbors])
+    true_set = set([idx for idx, _ in true_neighbors])
+    recall = len(approx_set & true_set) / len(true_set) if len(true_set) > 0 else 0.0
+    
+    return avg_af, recall
+
+
+# -------------------------------------------------------
+# MAIN SEARCH PIPELINE
+# -------------------------------------------------------
 def main():
-    args = parse_arguments()
+    parser = argparse.ArgumentParser(description="Neural LSH Search")
+    parser.add_argument("-d", "--data", required=True, help="Input dataset file")
+    parser.add_argument("-q", "--query", required=True, help="Query file")
+    parser.add_argument("-i", "--index", required=True, help="Index directory")
+    parser.add_argument("-o", "--output", required=True, help="Output file")
+    parser.add_argument("-type", "--type", required=True, choices=["sift", "mnist"])
+    parser.add_argument("-N", type=int, default=1, help="Number of nearest neighbors")
+    parser.add_argument("-R", type=float, default=None, help="Range search radius")
+    parser.add_argument("-T", type=int, default=5, help="Number of bins to probe")
+    parser.add_argument("-range", type=str, default="true", choices=["true", "false"])
     
-    # Set default radius based on dataset type
-    if args.radius is None:
-        args.radius = 2000.0 if args.type == 'mnist' else 2800.0
+    # Parameters για το μοντέλο (πρέπει να είναι ίδιες με το build)
+    parser.add_argument("-m", type=int, default=100, help="Number of partitions")
+    parser.add_argument("--layers", type=int, default=3)
+    parser.add_argument("--nodes", type=int, default=64)
     
-    args.range_search = (args.range_search.lower() == 'true')
+    args = parser.parse_args()
     
-    print("=" * 60)
-    print("Neural LSH - Search")
-    print("=" * 60)
+    # Default radius values
+    if args.R is None:
+        args.R = 2000 if args.type == "mnist" else 2800
     
-    # Load dataset
-    print(f"\n[1/4] Loading dataset from {args.dataset}...")
-    parser = DatasetParser()
-    data = parser.parse(args.dataset, args.type)
-    print(f"  Loaded {len(data)} vectors")
+    do_range = args.range.lower() == "true"
     
-    # Load queries
-    print(f"\n[2/4] Loading queries from {args.query}...")
-    queries = parser.parse(args.query, args.type)
-    print(f"  Loaded {len(queries)} queries")
+    # ---------------------------------------------------
+    # 1. Load dataset and queries
+    # ---------------------------------------------------
+    print("[SEARCH] Loading dataset...")
+    X, _ = load_dataset(args.data)
+    n, d = X.shape
+    print(f"[SEARCH] Dataset: {n} vectors, dim={d}")
     
-    # Load index
-    print(f"\n[3/4] Loading index from {args.index}...")
-    index_manager = IndexManager()
-    index_manager.load(args.index)
-    print(f"  Index loaded: {index_manager.n_parts} partitions")
+    print("[SEARCH] Loading queries...")
+    Q, _ = load_dataset(args.query)
+    print(f"[SEARCH] Queries: {Q.shape[0]} vectors")
     
-    # Initialize search engine
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    search_engine = SearchEngine(index_manager, data, device)
+    # ---------------------------------------------------
+    # 2. Load index
+    # ---------------------------------------------------
+    print("[SEARCH] Loading index...")
+    model, inverted, device = load_index(args.index, d, args.m, args.layers, args.nodes)
     
-    # Perform searches
-    print(f"\n[4/4] Performing searches...")
-    print(f"  N={args.neighbors}, T={args.probes}, R={args.radius}")
-    print(f"  Range search: {args.range_search}")
-    
+    # ---------------------------------------------------
+    # 3. Process queries
+    # ---------------------------------------------------
     results = []
-    approx_times = []
-    true_times = []
+    total_af = 0.0
+    total_recall = 0.0
+    total_t_approx = 0.0
+    total_t_true = 0.0
     
-    for i, query in enumerate(queries):
-        if (i + 1) % 10 == 0:
-            print(f"  Progress: {i+1}/{len(queries)}")
-        
+    print(f"[SEARCH] Processing {Q.shape[0]} queries...")
+    
+    for q_idx, query in enumerate(Q):
         # Approximate search
-        start_time = time.time()
-        neighbors, distances = search_engine.search(
-            query, N=args.neighbors, T=args.probes
-        )
-        approx_time = time.time() - start_time
-        approx_times.append(approx_time)
+        t_start = time.time()
+        candidate_indices = multi_probe_search(model, inverted, query, args.T, device)
+        approx_neighbors = knn_search(X, query, candidate_indices, args.N)
+        t_approx = time.time() - t_start
         
-        # Range search
+        # Range search (if enabled)
         range_neighbors = []
-        if args.range_search:
-            range_neighbors = search_engine.range_search(
-                query, radius=args.radius, T=args.probes
-            )
+        if do_range:
+            range_neighbors = range_search(X, query, candidate_indices, args.R)
         
-        # True search (exhaustive)
-        start_time = time.time()
-        true_neighbors, true_distances = search_engine.true_search(
-            query, N=args.neighbors
-        )
-        true_time = time.time() - start_time
-        true_times.append(true_time)
+        # True search (brute force)
+        t_start = time.time()
+        true_neighbors = true_knn_search(X, query, args.N)
+        t_true = time.time() - t_start
         
+        # Compute metrics
+        af, recall = compute_metrics(approx_neighbors, true_neighbors, range_neighbors, t_approx, t_true)
+        
+        total_af += af
+        total_recall += recall
+        total_t_approx += t_approx
+        total_t_true += t_true
+        
+        # Store results
         results.append({
-            'query_id': i,
-            'neighbors': neighbors,
-            'distances': distances,
+            'query_id': q_idx,
+            'approx_neighbors': approx_neighbors,
             'true_neighbors': true_neighbors,
-            'true_distances': true_distances,
             'range_neighbors': range_neighbors,
-            'approx_time': approx_time,
-            'true_time': true_time
+            'af': af,
+            'recall': recall
         })
+        
+        if (q_idx + 1) % 10 == 0:
+            print(f"[SEARCH] Processed {q_idx + 1}/{Q.shape[0]} queries")
     
-    # Calculate metrics
-    print(f"\n  Computing metrics...")
-    metrics_calc = MetricsCalculator()
-    avg_af = metrics_calc.calculate_af(results)
-    recall = metrics_calc.calculate_recall(results, args.neighbors)
-    qps = 1.0 / np.mean(approx_times) if approx_times else 0
+    # ---------------------------------------------------
+    # 4. Compute averages
+    # ---------------------------------------------------
+    num_queries = Q.shape[0]
+    avg_af = total_af / num_queries
+    avg_recall = total_recall / num_queries
+    qps = num_queries / total_t_approx
+    avg_t_approx = total_t_approx / num_queries
+    avg_t_true = total_t_true / num_queries
     
-    # Write results
-    print(f"\n  Writing results to {args.output}...")
-    write_results(args.output, results, avg_af, recall, qps,
-                  np.mean(approx_times), np.mean(true_times))
+    print(f"\n[SEARCH] === RESULTS ===")
+    print(f"[SEARCH] Average AF: {avg_af:.4f}")
+    print(f"[SEARCH] Recall@{args.N}: {avg_recall:.4f}")
+    print(f"[SEARCH] QPS: {qps:.2f}")
+    print(f"[SEARCH] Avg t_approx: {avg_t_approx:.6f}s")
+    print(f"[SEARCH] Avg t_true: {avg_t_true:.6f}s")
     
-    print(f"\n  Results:")
-    print(f"    Average AF: {avg_af:.4f}")
-    print(f"    Recall@{args.neighbors}: {recall:.4f}")
-    print(f"    QPS: {qps:.2f}")
-    print(f"    Avg approx time: {np.mean(approx_times)*1000:.2f}ms")
-    print(f"    Avg true time: {np.mean(true_times)*1000:.2f}ms")
-    print("=" * 60)
-
-
-def write_results(output_file, results, avg_af, recall, qps, 
-                  t_approx_avg, t_true_avg):
-    """Write results to output file"""
-    with open(output_file, 'w') as f:
+    # ---------------------------------------------------
+    # 5. Write output file
+    # ---------------------------------------------------
+    print(f"[SEARCH] Writing results to {args.output}...")
+    
+    with open(args.output, 'w') as f:
         f.write("Neural LSH\n")
         
-        for result in results:
-            f.write(f"Query: {result['query_id']}\n")
+        for res in results:
+            f.write(f"Query: {res['query_id']}\n")
             
-            # Nearest neighbors
-            for i, (neighbor, dist, true_dist) in enumerate(zip(
-                result['neighbors'], 
-                result['distances'],
-                result['true_distances']
-            )):
-                f.write(f"Nearest neighbor-{i+1}: {neighbor}\n")
-                f.write(f"distanceApproximate: {dist:.6f}\n")
-                f.write(f"distanceTrue: {true_dist:.6f}\n")
+            # Write approximate neighbors
+            for i, (idx, dist_a) in enumerate(res['approx_neighbors'], 1):
+                _, dist_t = res['true_neighbors'][i-1]
+                f.write(f"Nearest neighbor-{i}: {idx}\n")
+                f.write(f"distanceApproximate: {dist_a:.6f}\n")
+                f.write(f"distanceTrue: {dist_t:.6f}\n")
             
-            # Range neighbors
-            f.write("R-near neighbors:\n")
-            for neighbor in result['range_neighbors']:
-                f.write(f"{neighbor}\n")
+            # Write range neighbors
+            if do_range:
+                f.write("R-near neighbors:\n")
+                for idx in res['range_neighbors']:
+                    f.write(f"{idx}\n")
         
-        # Global metrics
+        # Write summary statistics
         f.write(f"Average AF: {avg_af:.6f}\n")
-        f.write(f"Recall@N: {recall:.6f}\n")
+        f.write(f"Recall@{args.N}: {avg_recall:.6f}\n")
         f.write(f"QPS: {qps:.2f}\n")
-        f.write(f"tApproximateAverage: {t_approx_avg:.6f}\n")
-        f.write(f"tTrueAverage: {t_true_avg:.6f}\n")
+        f.write(f"tApproximateAverage: {avg_t_approx:.6f}\n")
+        f.write(f"tTrueAverage: {avg_t_true:.6f}\n")
+    
+    print(f"[SEARCH] Output written successfully to {args.output}")
+    print("[SEARCH] Search completed!")
 
 
-if __name__ == '__main__':
+# -------------------------------------------------------
+# ENTRY POINT
+# -------------------------------------------------------
+if __name__ == "__main__":
     main()

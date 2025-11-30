@@ -1,0 +1,22 @@
+
+torch>=2.0.0
+numpy>=1.24.0
+kahip>=3.16
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+source venv/bin/activate
+python script.py
+deactivate  
+
+
+python3 nlsh_build.py -d data/sift/sift_learn.fvecs -i sift_index -type sift --knn 10 -m 100 --epochs 5 --batch_size 256
+
+python nlsh_search.py -d data/sift/sift_base.fvecs -q data/sift/sift_query.fvecs -i sift_index -o results/sift_output.txt -type sift -N 10 -T 5 -R 2800
+
+python3 nlsh_build.py -d data/sift/sift_learn.fvecs -i sift_index_m_50 -type sift --knn 10 -m 50 --epochs 10 --batch_size 256
+python nlsh_search.py -d data/sift/sift_base.fvecs -q data/sift/sift_query.fvecs -i sift_index_m_50 -o results/sift_output.txt -type sift -N 10 -T 10 -R 2800 -m 50
+
+
+python3 nlsh_build.py -d data/sift/sift_learn.fvecs -i sift_index_aggressive -type sift --knn 20 -m 30 --epochs 30 --batch_size 256 --layers 4 --imbalance 0.05 --nodes 128
+python3 nlsh_search.py -d data/sift/sift_learn.fvecs -q data/sift/sift_query.fvecs -i sift_index_aggressive -o results/sift_aggressive.txt -type sift --layers 4 -N 10 -T 10 --nodes 128 -m 30
