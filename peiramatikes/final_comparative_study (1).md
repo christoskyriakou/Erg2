@@ -332,7 +332,6 @@ SIFT Recall Progression
 
 #### Σύγκριση Όλων των SIFT Configurations
 
-```
 Recall@10 vs QPS Trade-off (SIFT)
 
 Recall
