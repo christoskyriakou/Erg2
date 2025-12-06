@@ -801,12 +801,3 @@ Recall
 **Συμπέρασμα:**
 - T=10 (67% των bins) βέλτιστο
 - Περισσότερα probes → μικρή βελτίωση, μεγάλη επιβάρυνση
-
-### 5.2 Learning Rate & Batch Size Analysis
-
-#### Impact on Convergence
-
-| lr | batch_size | SIFT Recall | Convergence |
-|----|------------|-------------|-------------|
-| 0.01 | 256 | 35% | Ασταθής, oscillates |
-|
