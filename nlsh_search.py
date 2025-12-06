@@ -8,9 +8,6 @@ from distances import L2_distance_batch
 import os
 
 
-# -------------------------------------------------------
-# LOAD INDEX
-# -------------------------------------------------------
 def load_index(index_path, d, m, layers, nodes):
     """
     Φορτώνει το εκπαιδευμένο μοντέλο και το inverted index
@@ -32,9 +29,6 @@ def load_index(index_path, d, m, layers, nodes):
     return model, inverted, device
 
 
-# -------------------------------------------------------
-# MULTI-PROBE SEARCH
-# -------------------------------------------------------
 def multi_probe_search(model, inverted, query, T, device):
     """
     Εκτελεί multi-probe search για ένα query
@@ -60,9 +54,6 @@ def multi_probe_search(model, inverted, query, T, device):
     return list(set(candidates))  # Remove duplicates
 
 
-# -------------------------------------------------------
-# KNN SEARCH
-# -------------------------------------------------------
 def knn_search(X, query, candidate_indices, N):
     """
     Εκτελεί ακριβή k-NN search στους υποψηφίους
@@ -84,9 +75,6 @@ def knn_search(X, query, candidate_indices, N):
     return neighbors
 
 
-# -------------------------------------------------------
-# RANGE SEARCH
-# -------------------------------------------------------
 def range_search(X, query, candidate_indices, R):
     """
     Εκτελεί range search στους υποψηφίους
@@ -105,9 +93,7 @@ def range_search(X, query, candidate_indices, R):
     return within_range
 
 
-# -------------------------------------------------------
-# TRUE KNN (BRUTE FORCE)
-# -------------------------------------------------------
+# BRUTE FORCE
 def true_knn_search(X, query, N):
     """
     Εξαντλητική αναζήτηση σε ολόκληρο το dataset
@@ -118,9 +104,6 @@ def true_knn_search(X, query, N):
     return neighbors
 
 
-# -------------------------------------------------------
-# COMPUTE METRICS
-# -------------------------------------------------------
 def compute_metrics(approx_neighbors, true_neighbors, range_neighbors, t_approx, t_true):
     """
     Υπολογίζει AF, Recall@N
@@ -144,9 +127,6 @@ def compute_metrics(approx_neighbors, true_neighbors, range_neighbors, t_approx,
     return avg_af, recall
 
 
-# -------------------------------------------------------
-# MAIN SEARCH PIPELINE
-# -------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(description="Neural LSH Search")
     parser.add_argument("-d", "--data", required=True, help="Input dataset file")
@@ -160,7 +140,7 @@ def main():
     parser.add_argument("-range", type=str, default="true", choices=["true", "false"])
     
     # Parameters για το μοντέλο (πρέπει να είναι ίδιες με το build)
-    parser.add_argument("-m", type=int, default=100, help="Number of partitions")
+    parser.add_argument("-m", type=int, help="Number of partitions")
     parser.add_argument("--layers", type=int, default=3)
     parser.add_argument("--nodes", type=int, default=64)
     
@@ -172,9 +152,7 @@ def main():
     
     do_range = args.range.lower() == "true"
     
-    # ---------------------------------------------------
-    # 1. Load dataset and queries
-    # ---------------------------------------------------
+    # Load dataset and queries
     print("[SEARCH] Loading dataset...")
     X, _ = load_dataset(args.data)
     n, d = X.shape
@@ -184,15 +162,23 @@ def main():
     Q, _ = load_dataset(args.query)
     print(f"[SEARCH] Queries: {Q.shape[0]} vectors")
     
-    # ---------------------------------------------------
-    # 2. Load index
-    # ---------------------------------------------------
+    # Load index
     print("[SEARCH] Loading index...")
+
+    # Auto-detect m if not provided
+    if args.m is None:
+        inv_path = os.path.join(args.index, "inverted_index.npy")
+        if os.path.exists(inv_path):
+            temp_inv = np.load(inv_path, allow_pickle=True).item()
+            args.m = len(temp_inv)
+            print(f"[SEARCH] Auto-detected m={args.m} from index")
+        else:
+            print(f"[SEARCH] ERROR: Could not auto-detect m and --m not specified")
+            return
+
     model, inverted, device = load_index(args.index, d, args.m, args.layers, args.nodes)
     
-    # ---------------------------------------------------
-    # 3. Process queries
-    # ---------------------------------------------------
+    # Process queries
     results = []
     total_af = 0.0
     total_recall = 0.0
@@ -239,9 +225,7 @@ def main():
         if (q_idx + 1) % 10 == 0:
             print(f"[SEARCH] Processed {q_idx + 1}/{Q.shape[0]} queries")
     
-    # ---------------------------------------------------
-    # 4. Compute averages
-    # ---------------------------------------------------
+    # Compute averages
     num_queries = Q.shape[0]
     avg_af = total_af / num_queries
     avg_recall = total_recall / num_queries
@@ -256,9 +240,7 @@ def main():
     print(f"[SEARCH] Avg t_approx: {avg_t_approx:.6f}s")
     print(f"[SEARCH] Avg t_true: {avg_t_true:.6f}s")
     
-    # ---------------------------------------------------
-    # 5. Write output file
-    # ---------------------------------------------------
+    # Write output file
     print(f"[SEARCH] Writing results to {args.output}...")
     
     with open(args.output, 'w') as f:
@@ -267,20 +249,17 @@ def main():
         for res in results:
             f.write(f"Query: {res['query_id']}\n")
             
-            # Write approximate neighbors
             for i, (idx, dist_a) in enumerate(res['approx_neighbors'], 1):
                 _, dist_t = res['true_neighbors'][i-1]
                 f.write(f"Nearest neighbor-{i}: {idx}\n")
                 f.write(f"distanceApproximate: {dist_a:.6f}\n")
                 f.write(f"distanceTrue: {dist_t:.6f}\n")
             
-            # Write range neighbors
             if do_range:
                 f.write("R-near neighbors:\n")
                 for idx in res['range_neighbors']:
                     f.write(f"{idx}\n")
         
-        # Write summary statistics
         f.write(f"Average AF: {avg_af:.6f}\n")
         f.write(f"Recall@{args.N}: {avg_recall:.6f}\n")
         f.write(f"QPS: {qps:.2f}\n")
@@ -291,8 +270,5 @@ def main():
     print("[SEARCH] Search completed!")
 
 
-# -------------------------------------------------------
-# ENTRY POINT
-# -------------------------------------------------------
 if __name__ == "__main__":
     main()

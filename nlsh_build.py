@@ -12,9 +12,7 @@ from graph_utils import (
 import os
 
 
-# -------------------------------------------------------
 # TRAIN MLP
-# -------------------------------------------------------
 def train_mlp(X, parts, args):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -66,9 +64,7 @@ def train_mlp(X, parts, args):
     return model
 
 
-# -------------------------------------------------------
 # MAIN BUILD PIPELINE
-# -------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(description="Neural LSH Build")
     parser.add_argument("-d", "--data", required=True, help="Input dataset file")
@@ -78,7 +74,7 @@ def main():
     parser.add_argument("--knn", type=int, default=10)
     parser.add_argument("-m", type=int, default=100)
     parser.add_argument("--imbalance", type=float, default=0.03)
-    parser.add_argument("--kahip_mode", type=int, default=2)
+    parser.add_argument("--kahip_mode", type=int, default=0)
     parser.add_argument("--layers", type=int, default=3)
     parser.add_argument("--nodes", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=10)
@@ -88,17 +84,13 @@ def main():
 
     args = parser.parse_args()
 
-    # ---------------------------------------------------
-    # 1. Load dataset (Python)
-    # ---------------------------------------------------
+    # Load dataset
     print("[BUILD] Loading dataset...")
     X, dtype = load_dataset(args.data)
     print(f"[BUILD] Loaded dataset: {X.shape[0]} vectors, dim={X.shape[1]}")
     print(f"[BUILD] Type: {dtype}")
 
-    # ---------------------------------------------------
-    # 2. Build kNN graph (C IVFFlat)
-    # ---------------------------------------------------
+    # Build kNN graph (C IVFFlat)
     print(f"[BUILD] Building KNN graph using C IVFFlat (k={args.knn})...")
 
     graph = build_knn_graph_with_ivfflat(
@@ -106,18 +98,14 @@ def main():
         k=args.knn,
         data_path=args.data,
         data_type=args.type,
-        nprobe=5
+        nprobe=15
     )
 
-    # ---------------------------------------------------
-    # 3. Undirected Weighted Graph
-    # ---------------------------------------------------
+    # Undirected Weighted Graph
     print("[BUILD] Building undirected weighted graph...")
     ugraph = make_undirected_weighted(graph)
 
-    # ---------------------------------------------------
-    # 4. KaHIP Partitioning
-    # ---------------------------------------------------
+    # KaHIP Partitioning
     print(f"[BUILD] Running KaHIP (m={args.m}, imbalance={args.imbalance})...")
     parts = run_kahip(ugraph, args.m, args.imbalance, args.kahip_mode)
 
@@ -126,28 +114,20 @@ def main():
 
     os.makedirs(args.index, exist_ok=True)
 
-    # Save partitions
     parts_path = os.path.join(args.index, "partitions.npy")
     np.save(parts_path, parts)
     print(f"[BUILD] Saved partitions → {parts_path}")
 
-    # ---------------------------------------------------
-    # 5. Train classifier
-    # ---------------------------------------------------
     print("[BUILD] Starting MLP training...")
     model = train_mlp(X, parts, args)
 
-    # ---------------------------------------------------
-    # 6. Build inverted index
-    # ---------------------------------------------------
+    # Build inverted index
     print("[BUILD] Building inverted index...")
     inverted = {r: [] for r in range(args.m)}
     for idx, r in enumerate(parts):
         inverted[int(r)].append(int(idx))
 
-    # ---------------------------------------------------
-    # 7. Save index files
-    # ---------------------------------------------------
+    # Save index files
     model_path = os.path.join(args.index, "model.pth")
     torch.save(model.state_dict(), model_path)
     print(f"[BUILD] Saved model → {model_path}")
@@ -159,8 +139,6 @@ def main():
     print("[BUILD] All tasks completed successfully.")
 
 
-# -------------------------------------------------------
 # ENTRY POINT
-# -------------------------------------------------------
 if __name__ == "__main__":
     main()

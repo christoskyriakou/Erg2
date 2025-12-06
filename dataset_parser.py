@@ -2,9 +2,7 @@ import numpy as np
 import struct
 import os
 
-# -------------------------------------------------------
 # READ FVECs (float32 vectors)
-# -------------------------------------------------------
 def read_fvecs(path):
     a = np.fromfile(path, dtype=np.int32)
     if a.size == 0:
@@ -13,9 +11,7 @@ def read_fvecs(path):
     a = a.reshape(-1, d + 1)
     return a[:, 1:].astype(np.float32)
 
-# -------------------------------------------------------
 # READ BVECs (uint8 vectors)
-# -------------------------------------------------------
 def read_bvecs(path):
     with open(path, "rb") as f:
         content = f.read()
@@ -29,18 +25,14 @@ def read_bvecs(path):
         vecs.append(vec)
     return np.vstack(vecs).astype(np.float32)
 
-# -------------------------------------------------------
 # READ IVECs (ground truth)
-# -------------------------------------------------------
 def read_ivecs(path):
     a = np.fromfile(path, dtype=np.int32)
     d = a[0]
     a = a.reshape(-1, d + 1)
     return a[:, 1:]
 
-# -------------------------------------------------------
 # READ MNIST RAW IDX AND CONVERT TO BVECs
-# -------------------------------------------------------
 def read_mnist_idx(path):
     """Returns MNIST raw (n, 784) uint8"""
     with open(path, "rb") as f:
@@ -62,9 +54,7 @@ def convert_mnist_to_bvecs(idx_path, out_path):
     print("[MNIST] Conversion done.")
     return out_path
 
-# -------------------------------------------------------
 # UNIFIED LOADER
-# -------------------------------------------------------
 def load_dataset(path):
     """
     Smart loader: accepts both base names and full filenames.

@@ -2,10 +2,8 @@ import numpy as np
 import subprocess
 import kahip
 
-# ------------------------------------------------------------
 # BUILD KNN GRAPH USING C IVFFLAT (C BINARY: ivfflat_knn)
-# ------------------------------------------------------------
-def build_knn_graph_with_ivfflat(X, k, data_path, data_type, nprobe=5):
+def build_knn_graph_with_ivfflat(X, k, data_path, data_type, nprobe=15):
     """
     X: numpy array (n, d)
     k: number of neighbors
@@ -44,9 +42,7 @@ def build_knn_graph_with_ivfflat(X, k, data_path, data_type, nprobe=5):
     return graph
 
 
-# ------------------------------------------------------------
 # MAKE UNDIRECTED + WEIGHTED GRAPH
-# ------------------------------------------------------------
 def make_undirected_weighted(graph):
     n = len(graph)
     undir = [{} for _ in range(n)]
@@ -60,9 +56,7 @@ def make_undirected_weighted(graph):
     return undir
 
 
-# ------------------------------------------------------------
 # CONVERT UNDIRECTED GRAPH -> CSR FORMAT
-# ------------------------------------------------------------
 def graph_to_csr(undir):
     n = len(undir)
     xadj = [0]
@@ -78,9 +72,7 @@ def graph_to_csr(undir):
     return xadj, adjncy, adjcwgt
 
 
-# ------------------------------------------------------------
 # RUN KaHIP PARTITIONING
-# ------------------------------------------------------------
 def run_kahip(ugraph, m, imbalance, mode):
     xadj, adjncy, adjcwgt = graph_to_csr(ugraph)
     n = len(ugraph)

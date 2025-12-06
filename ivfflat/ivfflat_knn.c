@@ -49,7 +49,7 @@ int main(int argc, char** argv)
 
     fprintf(stdout, "Loaded %d vectors of dimension %d\n", n, dim);
 
-    int num_clusters = 256;      // μπορείς να το κάνεις παράμετρο αν θες
+    int num_clusters = 128;      // μπορείς να το κάνεις παράμετρο αν θες
     unsigned int seed = 1;       // ή να το παίρνεις από argv
 
     IVFFlat* index = create_ivfflat(num_clusters, dim);
