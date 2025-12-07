@@ -151,7 +151,7 @@ python nlsh_search.py -d <input_file> -q <query_file> -i <index_path> -type <mni
 
 
 5. Μορφή Αρχείου Εξόδου
-
+```
 Neural LSH
 Query: 0
 Nearest neighbor-1: 243
@@ -174,7 +174,7 @@ QPS: 19.30
 tApproximateAverage: 0.051813
 tTrueAverage: 0.126917
 
-
+```
 6. Πειραματική Μελέτη
 
 Η πειραματική αξιολόγηση βρίσκεται στο αρχείο:
