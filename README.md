@@ -94,7 +94,7 @@ pip install -r requirments.txt
 
 ---
 
-## 4.1 Κατασκευή Ευρετηρίου — `nlsh_build.py` 🧠
+## 4.1 Κατασκευή Ευρετηρίου — `nlsh_build.py` 
 
 Το script αυτό:
 - δημιουργεί τον k-NN γράφο,
@@ -104,7 +104,7 @@ pip install -r requirments.txt
 
 ---
 
-### 🛠️ Συντακτικό
+### Εκτέλεση του build
 
 
 python nlsh_build.py \
@@ -137,3 +137,78 @@ python nlsh_build.py \
 | `--batch_size`  | Batch size                                | 128 |
 | `--lr`          | Learning rate                             | 0.001 |
 | `--seed`        | Random seed                               | 1 |
+
+
+## 4.2 Αναζήτηση — `nlsh_search.py` 
+
+Το script αυτό εκτελεί αναζήτηση k-NN ή range search με βάση το index που παράχθηκε από το `nlsh_build.py`.
+
+---
+
+### Εκτέλεση του search
+
+
+python nlsh_search.py \
+  -d <input file> \
+  -q <query file> \
+  -i <index path> \
+  -o <output file> \
+  -type <sift|mnist> \
+  -N <int> \
+  -R <double> \
+  -T <int> \
+  -range <true|false>
+| Παράμετρος | Περιγραφή | Default |
+|-----------|-----------|---------|
+| `-d`      | Dataset αρχείο | — |
+| `-q`      | Query αρχείο | — |
+| `-i`      | Path προς το index που παρήχθη | — |
+| `-o`      | Αρχείο εξόδου | — |
+| `-type`   | Τύπος δεδομένων: `mnist` ή `sift` | — |
+| `-N`      | Πλήθος πλησιέστερων γειτόνων (k-NN) | 1 |
+| `-R`      | Range search radius (MNIST: 2000, SIFT: 2.0–3.0) | dataset-dependent |
+| `-T`      | Πλήθος bins που εξετάζονται στο multi-probe | 5 |
+| `-range`  | Ενεργοποίηση range search (`true` / `false`) | true |
+
+
+5. Μορφή Αρχείου Εξόδου
+
+Neural LSH
+Query: 0
+Nearest neighbor-1: 243
+distanceApproximate: 1320.631348
+distanceTrue: 1320.631348
+...
+Nearest neighbor-N: 103
+distanceApproximate: 1404.252075
+distanceTrue: 1404.252075
+
+R-near neighbors:
+45
+167
+183
+280
+
+Average AF: 1.0008
+Recall@N: 0.9852
+QPS: 19.30
+tApproximateAverage: 0.051813
+tTrueAverage: 0.126917
+
+
+6. Πειραματική Μελέτη
+
+Η πειραματική αξιολόγηση βρίσκεται στο αρχείο:
+peiramatiki_meleti.md
+
+και περιλαμβάνει:
+- επιλογή υπερπαραμέτρων για Neural LSH
+- πίνακες με AF, Recall@N και QPS
+- σύγκριση με LSH, Hypercube, IVFFlat, IVFPQ
+- αποτελέσματα για MNIST και SIFT
+
+
+7. Developers
+
+Κυριακού Χρήστος — sdi2300096
+Πετρίδου Ελισάβετ — sdi2300170
