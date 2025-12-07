@@ -36,7 +36,7 @@ project2/
 
 ### Εγκατάσταση μέσω `requirments.txt`
 
-```bash
+
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirments.txt
@@ -106,7 +106,7 @@ pip install -r requirments.txt
 
 ### 🛠️ Συντακτικό
 
-```bash
+
 python nlsh_build.py \
   -d <input file> \
   -i <index path> \
