@@ -85,9 +85,9 @@ pip install -r requirments.txt
 4. Υπολογίζονται ακριβείς L2 αποστάσεις στους υποψηφίους.  
 5. Επιστρέφονται οι Ν κοντινότεροι ή τα R-near neighbors.
 
-## 4. Χρήση Scripts
+## 4. Χρήση προγραμμάτων
 
-Η λειτουργικότητα του Neural LSH βασίζεται σε δύο κύρια scripts:
+Η λειτουργικότητα του Neural LSH βασίζεται σε δύο κύρια αρχεία:
 
 - **`nlsh_build.py`** → Κατασκευή του Neural LSH index  
 - **`nlsh_search.py`** → Αναζήτηση (k-NN ή range search) μέσα από το index  
@@ -96,7 +96,7 @@ pip install -r requirments.txt
 
 ## 4.1 Κατασκευή Ευρετηρίου — `nlsh_build.py` 
 
-Το script αυτό:
+Το αρχείο αυτό:
 - δημιουργεί τον k-NN γράφο,
 - εκτελεί το partitioning με KaHIP,
 - εκπαιδεύει το MLP,
@@ -129,7 +129,7 @@ python nlsh_build.py -d <input_file> -i <index_path> -type <mnist|sift> --knn <k
 
 ## 4.2 Αναζήτηση — `nlsh_search.py` 
 
-Το script αυτό εκτελεί αναζήτηση k-NN ή range search με βάση το index που παράχθηκε από το `nlsh_build.py`.
+Το πρόγραμμα αυτό εκτελεί αναζήτηση k-NN ή range search με βάση το index που παράχθηκε από το `nlsh_build.py`.
 
 ---
 
