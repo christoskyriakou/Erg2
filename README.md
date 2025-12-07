@@ -107,20 +107,8 @@ pip install -r requirments.txt
 ### Εκτέλεση του build
 
 
-python nlsh_build.py \
-  -d <input file> \
-  -i <index path> \
-  -type <sift|mnist> \
-  --knn <int> \
-  -m <int> \
-  --imbalance <float> \
-  --kahip_mode <int> \
-  --layers <int> \
-  --nodes <int> \
-  --epochs <int> \
-  --batch_size <int> \
-  --lr <float> \
-  --seed <int>
+python nlsh_build.py -d <input_file> -i <index_path> -type <mnist|sift> --knn <k> -m <m> --imbalance <a> --kahip_mode <mode> --layers <L> --nodes <H> --epochs <E> --batch_size <B> --lr <lr> --seed <s>
+
 
 | Παράμετρος      | Περιγραφή                                 | Default |
 |-----------------|-------------------------------------------|---------|
@@ -147,17 +135,8 @@ python nlsh_build.py \
 
 ### Εκτέλεση του search
 
+python nlsh_search.py -d <input_file> -q <query_file> -i <index_path> -type <mnist|sift> -N <N> -R <R> -T <T> -range <true|false> -o <output_file>
 
-python nlsh_search.py \
-  -d <input file> \
-  -q <query file> \
-  -i <index path> \
-  -o <output file> \
-  -type <sift|mnist> \
-  -N <int> \
-  -R <double> \
-  -T <int> \
-  -range <true|false>
 | Παράμετρος | Περιγραφή | Default |
 |-----------|-----------|---------|
 | `-d`      | Dataset αρχείο | — |
