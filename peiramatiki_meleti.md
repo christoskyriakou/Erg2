@@ -6,7 +6,7 @@
 
 Η παρούσα μελέτη αξιολογεί και συγκρίνει **πέντε αλγόριθμους** προσεγγιστικής αναζήτησης πλησιέστερων γειτόνων (Approximate Nearest Neighbor Search):
 
-1. **LSH** (Locality-Sensitive Hashing)
+1. **LSH** (Locality-Sensitive Hashing) 
 2. **Hypercube** (Projection-based method)
 3. **IVFFlat** (Inverted File with Flat quantization)
 4. **IVFPQ** (Inverted File with Product Quantization)
