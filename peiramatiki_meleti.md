@@ -389,7 +389,7 @@
 **Συμπέρασμα:** Το SIFT επωφελείται από:
 - Βαθύ δίκτυο (6 layers)
 - Μεγάλο capacity (320 nodes)
-- Trade-off: Training time αυξάνεται (10 min)
+- Trade-off: Training time αυξάνεται (10 )
 
 ##### Effect of T (Multi-Probe)
 
